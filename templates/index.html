@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Document Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .drag-over { border-color: #3b82f6; background-color: #eff6ff; }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="container mx-auto p-4 max-w-3xl">
+
+        <div id="uploadView" class="bg-white rounded-2xl shadow-xl p-8 md:p-12">
+            <header class="text-center mb-8">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Chat With Your Document</h1>
+                <p class="text-gray-500 mt-3">Upload a PDF, DOCX, or TXT file to get started.</p>
+            </header>
+
+            <form id="uploadForm">
+                <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-colors duration-300 hover:border-blue-500 hover:bg-gray-50">
+                    <input type="file" id="fileInput" name="file" class="hidden" accept=".pdf,.docx,.txt">
+                    <div class="flex flex-col items-center">
+                        <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <p class="mt-4 text-gray-600"><span class="font-semibold text-blue-600">Click to upload</span> or drag and drop</p>
+                        
+                        <div id="fileInfo" class="mt-2 text-sm">
+                            <span id="fileName" class="text-gray-500 font-medium"></span>
+                            <button type="button" id="removeFileBtn" class="ml-2 text-red-500 font-semibold hover:underline hidden">[Remove]</button>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="mt-6 text-center">
+                    <button id="submitBtn" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Start Chatting
+                    </button>
+                    <p id="loadingMessage" class="mt-4 text-sm text-gray-600 hidden">Uploading and processing your document...</p>
+                </div>
+            </form>
+        </div>
+
+        <div id="chatView" class="hidden h-[90vh] flex flex-col">
+            <header class="bg-white rounded-t-lg shadow p-4 border-b">
+                <h1 class="text-xl font-semibold text-gray-800">Chatting with: 
+                    <span id="chatFilename" class="font-bold text-blue-600"></span>
+                </h1>
+                <button id="startOverBtn" class="text-sm text-blue-500 hover:underline">&larr; Upload another file</button>
+            </header>
+            <main id="chatbox" class="flex-grow bg-white p-6 overflow-y-auto shadow">
+                <div class="space-y-6">
+                    <div class="flex items-start gap-3">
+                        <div class="bg-blue-500 text-white p-2 rounded-full h-8 w-8 flex-shrink-0 flex items-center justify-center">AI</div>
+                        <div class="bg-gray-200 text-gray-800 p-4 rounded-lg max-w-lg">
+                            <p>Hello! I've finished reading your document. What would you like to know?</p>
+                        </div>
+                    </div>
+                </div>
+            </main>
+            <footer class="bg-white rounded-b-lg shadow p-4 border-t">
+                <form id="chatForm" class="flex items-center gap-4">
+                    <input type="text" id="userInput" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ask a question..." autocomplete="off">
+                    <button type="submit" class="bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-700">Send</button>
+                </form>
+            </footer>
+        </div>
+
+    </div>
+    
+</body>
+</html>
+
+    <script>
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- View Elements ---
+            const uploadView = document.getElementById('uploadView');
+            const chatView = document.getElementById('chatView');
+
+            // --- Upload Elements ---
+            const uploadForm = document.getElementById('uploadForm');
+            const fileInput = document.getElementById('fileInput');
+            const dropZone = document.getElementById('dropZone');
+            const fileNameDisplay = document.getElementById('fileName');
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const removeFileBtn = document.getElementById('removeFileBtn'); // Get the new button
+
+            // --- Chat Elements ---
+            const chatFilename = document.getElementById('chatFilename');
+            const startOverBtn = document.getElementById('startOverBtn');
+
+            let currentFile = null;
+
+            // --- Functions for Switching Views ---
+            function showChatView(filename) {
+                chatFilename.textContent = filename;
+                chatView.dataset.filename = filename;
+                uploadView.classList.add('hidden');
+                chatView.classList.remove('hidden');
+            }
+
+            function showUploadView() {
+                uploadView.classList.remove('hidden');
+                chatView.classList.add('hidden');
+                resetUploadForm();
+            }
+            
+            // --- Event Listeners for Upload ---
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileSelect(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) {
+                    handleFileSelect(fileInput.files[0]);
+                }
+            });
+
+            // ✨ ADD THIS EVENT LISTENER for the remove button ✨
+            removeFileBtn.addEventListener('click', () => {
+                resetUploadForm();
+            });
+
+            uploadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!currentFile) return;
+
+                submitBtn.disabled = true;
+                loadingMessage.classList.remove('hidden');
+
+                const formData = new FormData();
+                formData.append('file', currentFile);
+
+                try {
+                    const response = await fetch('/uploadAndStoreResume', { method: 'POST', body: formData });
+                    if (!response.ok) throw new Error('Upload failed');
+                    
+                    const result = await response.json();
+                    showChatView(result.filename);
+
+                } catch (error) {
+                    alert('An error occurred. Please try again.');
+                } finally {
+                    // No need to reset buttons here, as the view will change
+                }
+            });
+
+            function handleFileSelect(file) {
+                currentFile = file;
+                fileNameDisplay.textContent = `Selected: ${file.name}`;
+                submitBtn.disabled = false;
+                removeFileBtn.classList.remove('hidden'); // Show the remove button
+            }
+
+            function resetUploadForm() {
+                currentFile = null;
+                fileInput.value = ''; // This is important to clear the file input
+                fileNameDisplay.textContent = '';
+                submitBtn.disabled = true;
+                removeFileBtn.classList.add('hidden'); // Hide the remove button
+            }
+
+            // --- Event Listener for Chat View ---
+            startOverBtn.addEventListener('click', showUploadView);
+        });
+    </script>
+</body>
+</html>
