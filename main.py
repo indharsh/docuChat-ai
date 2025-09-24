@@ -6,6 +6,7 @@ import os
 import shutil
 from PyPDF2 import PdfReader
 from docx import Document
+from groq import Groq
 
 
 # Import for document chunking and embeddings
@@ -21,6 +22,8 @@ app = FastAPI(
 )
 
 templates = Jinja2Templates(directory="templates")
+
+
 
 class RequestFromClient(BaseModel):
     """
@@ -48,6 +51,20 @@ chromdb_directory = "vector_db"
 os.makedirs(chromdb_directory, exist_ok=True)
 
 embedding_model_name = "BAAI/bge-small-en-v1.5"
+
+load_dotenv()  # Load environment variables from .env file
+
+try:
+    if not os.getenv("groq_api_key"):
+        raise ValueError("GROQ_API_KEY is not set in the environment variables.")
+    client = Groq(api_key=os.getenv("groq_api_key"))
+    print("[DEBUG]: Groq client initialized successfully.")
+except Exception as e:
+    print(f"[ERROR]: {e}")
+    client = None
+
+
+
 
 
 def extractTextFromPDF(file_path):
@@ -175,6 +192,10 @@ async def uploadAndStoreResume(file: UploadFile = File(...)):
 @app.post("/chat", response_model=ResponseToClient)
 async def chat(request: RequestFromClient):
     # Process the chat request
+    with open('system_prompt.txt', 'r') as f:
+        system_prompt = f.read()
+    
+    print(f"[DEBUG]: Received query: {request.query}")
 
     return {"answer": "Chat response"}
 

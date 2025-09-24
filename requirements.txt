@@ -11,6 +11,7 @@ langsmith==0.4.27
 sentence-transformers==5.1.0
 torch>=2.0.0
 transformers>=4.0.0
+groq==0.31.1
 
 # Web framework and API
 fastapi>=0.100.0
