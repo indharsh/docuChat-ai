@@ -6,5 +6,6 @@
 * langchain & langchain_groq: For the core RAG and LLM logic.
 * pypdf: To read the content from uploaded PDF files.
 * chromadb: Our open-source vector database.
+### pip install langchain langchain_community langchain_huggingface pypdf chromadb sentence-transformers
 ## Backend deployment on 'Render'
 ## Frontend deployment on 'Vercel'

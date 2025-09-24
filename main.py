@@ -7,6 +7,13 @@ import shutil
 from PyPDF2 import PdfReader
 from docx import Document
 
+
+# Import for document chunking and embeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+
+
 # Create an instance of the FastAPI class
 app = FastAPI(
     title="DocuChat-ai",
@@ -15,26 +22,33 @@ app = FastAPI(
 
 templates = Jinja2Templates(directory="templates")
 
-class requestFromClient(BaseModel):
+class RequestFromClient(BaseModel):
     """
     This class defines the structure of the request body for the /chat endpoint.
     This makes sure that the incoming request has the correct JSON format.
     All the parameters listed here should be included in the request as a key in the JSON.
     Basically we are inhereting the BaseModel class from Pydantic to create a model for our request body by creating the class requestFromClient.
-    """
-    question: str
+    """ 
+    query: str
 
-class responseToClient(BaseModel):
+class ResponseToClient(BaseModel):
     """
     This class defines the structure of the response body for the /chat endpoint.
     This makes sure that the outgoing response has the correct JSON format.
     All the parameters listed here will be included in the response as a key in the JSON.
-    Basically we are inhereting the BaseModel class from Pydantic to create a model for our response body by creating the class responseToClient.
-    """
+    Basically we are inhereting the BaseModel class from Pydantic to create a model for our response body by creating the class ResponseToClient.
+    """ 
     answer: str
+
 
 uploadDirectory = "uploaded_files"
 os.makedirs(uploadDirectory, exist_ok=True)
+
+chromdb_directory = "vector_db"
+os.makedirs(chromdb_directory, exist_ok=True)
+
+embedding_model_name = "BAAI/bge-small-en-v1.5"
+
 
 def extractTextFromPDF(file_path):
     """
@@ -118,4 +132,50 @@ async def uploadAndStoreResume(file: UploadFile = File(...)):
         print("[ERROR]: Unsupported file type")
         return {"error": "Unsupported file type"}
     
+    try:
+        # Initialize the embedding model through langchain_huggingface Class
+        embeddingModel = HuggingFaceEmbeddings(
+            model_name=embedding_model_name, 
+            model_kwargs={"device": "cpu"}, # Use CPU for embedding
+            encode_kwargs={"normalize_embeddings": True})
+        print("[DEBUG]: Embedding model started")
+        
+        # Initialize the ChromaDB client, loading from the persistent directory
+        db = Chroma(
+            embedding_function=embeddingModel, 
+            persist_directory=chromdb_directory
+        )
+        
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+        return {"error": "Failed to start embedding model"}
+    try:
+        # Initialize the text splitter using langchain RecursiveCharacterTextSplitter Class
+        textSplitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, 
+            chunk_overlap=100, 
+            separators=["\n\n", "\n", " ", ""]
+        )
+        print("[DEBUG]: Text splitter started")
+        chunks = textSplitter.split_text(fileContent)
+        ids = []
+        for i in range(len(chunks)):
+            ids.append(f"{file.filename}_{i}")
+        print(f"[DEBUG]: Text split into {len(chunks)} chunks")
+        # Add the chunks to the ChromaDB collection
+        db.add_texts(chunks, ids=ids)
+        # db.persist() - Save the changes to the persistent directory
+        print("[DEBUG]: Chunks added to ChromaDB")
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+        return {"error": "Failed to split text"}
 
+    return {"filename": file.filename}
+
+@app.post("/chat", response_model=ResponseToClient)
+async def chat(request: RequestFromClient):
+    # Process the chat request
+
+    return {"answer": "Chat response"}
+
+    

@@ -1,0 +1,52 @@
+# Essential packages for docuChat application
+# ML/AI packages
+chromadb==0.4.24
+langchain==0.3.27
+langchain-community==0.3.29
+langchain-core==0.3.76
+langchain-groq==0.3.8
+langchain-huggingface==0.3.1
+langchain-text-splitters==0.3.11
+langsmith==0.4.27
+sentence-transformers==5.1.0
+torch>=2.0.0
+transformers>=4.0.0
+
+# Web framework and API
+fastapi>=0.100.0
+starlette>=0.35.0
+uvicorn>=0.20.0
+streamlit>=1.20.0
+
+# HTTP and requests
+requests>=2.28.0
+httpx>=0.24.0
+httpcore>=0.16.0
+aiohttp>=3.8.0
+
+# Document processing
+pypdf>=3.0.0
+python-docx>=1.2.0
+
+# Database and storage
+SQLAlchemy>=1.4.0
+mysql-connector-python>=8.0.0
+
+# Data processing
+numpy>=1.24.0
+pandas>=1.5.0
+scipy>=1.10.0
+scikit-learn>=1.2.0
+
+# Utilities
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+typing-extensions>=4.5.0
+click>=8.0.0
+colorama>=0.4.6
+tqdm>=4.64.0
+PyYAML>=6.0
+Jinja2>=3.1.0
+MarkupSafe>=2.1.0
+certifi>=2022.0.0
