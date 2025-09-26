@@ -7,11 +7,11 @@ import shutil
 from PyPDF2 import PdfReader
 from docx import Document
 from groq import Groq
-
+from dotenv import load_dotenv
 
 # Import for document chunking and embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
@@ -50,10 +50,9 @@ os.makedirs(uploadDirectory, exist_ok=True)
 chromdb_directory = "vector_db"
 os.makedirs(chromdb_directory, exist_ok=True)
 
-embedding_model_name = "BAAI/bge-small-en-v1.5"
-
 load_dotenv()  # Load environment variables from .env file
 
+# Initialize Groq client
 try:
     if not os.getenv("groq_api_key"):
         raise ValueError("GROQ_API_KEY is not set in the environment variables.")
@@ -62,10 +61,6 @@ try:
 except Exception as e:
     print(f"[ERROR]: {e}")
     client = None
-
-
-
-
 
 def extractTextFromPDF(file_path):
     """
@@ -100,6 +95,28 @@ def extractTextFromWord(file_path):
         return ""
     return text
 
+def initialize_vector_db():
+    """
+    This function initializes the ChromaDB vector store.
+    """
+    embedding_model_name = "BAAI/bge-small-en-v1.5"
+    try:
+        embeddingModel = HuggingFaceEmbeddings(
+            model_name=embedding_model_name, 
+            model_kwargs={"device": "cpu"}, # Use CPU for embedding
+            encode_kwargs={"normalize_embeddings": True})
+        print("[DEBUG]: Embedding model started")
+        
+        db = Chroma(
+            embedding_function=embeddingModel, 
+            persist_directory=chromdb_directory
+        )
+        print("[DEBUG]: ChromaDB initialized")
+        return db
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+        return None
+
 # Define a "route" for the root URL
 @app.get("/")
 def read_root():
@@ -107,7 +124,6 @@ def read_root():
     This is the root endpoint. It's a good way to check if the server is running.
     """
     return templates.TemplateResponse("index.html", {"request": {}})
-
 
 
 @app.post("/uploadAndStoreResume")
@@ -148,24 +164,6 @@ async def uploadAndStoreResume(file: UploadFile = File(...)):
     else:
         print("[ERROR]: Unsupported file type")
         return {"error": "Unsupported file type"}
-    
-    try:
-        # Initialize the embedding model through langchain_huggingface Class
-        embeddingModel = HuggingFaceEmbeddings(
-            model_name=embedding_model_name, 
-            model_kwargs={"device": "cpu"}, # Use CPU for embedding
-            encode_kwargs={"normalize_embeddings": True})
-        print("[DEBUG]: Embedding model started")
-        
-        # Initialize the ChromaDB client, loading from the persistent directory
-        db = Chroma(
-            embedding_function=embeddingModel, 
-            persist_directory=chromdb_directory
-        )
-        
-    except Exception as e:
-        print(f"[ERROR]: {e}")
-        return {"error": "Failed to start embedding model"}
     try:
         # Initialize the text splitter using langchain RecursiveCharacterTextSplitter Class
         textSplitter = RecursiveCharacterTextSplitter(
@@ -174,12 +172,15 @@ async def uploadAndStoreResume(file: UploadFile = File(...)):
             separators=["\n\n", "\n", " ", ""]
         )
         print("[DEBUG]: Text splitter started")
+        # Create chunks from the file content
         chunks = textSplitter.split_text(fileContent)
         ids = []
+        # IDs are required for each chunk in chromaDB so it needs to be created
         for i in range(len(chunks)):
             ids.append(f"{file.filename}_{i}")
         print(f"[DEBUG]: Text split into {len(chunks)} chunks")
         # Add the chunks to the ChromaDB collection
+        db = initialize_vector_db()
         db.add_texts(chunks, ids=ids)
         # db.persist() - Save the changes to the persistent directory
         print("[DEBUG]: Chunks added to ChromaDB")
@@ -187,16 +188,95 @@ async def uploadAndStoreResume(file: UploadFile = File(...)):
         print(f"[ERROR]: {e}")
         return {"error": "Failed to split text"}
 
-    return {"filename": file.filename}
+    return {"processedFile": file.filename}
 
 @app.post("/chat", response_model=ResponseToClient)
 async def chat(request: RequestFromClient):
     # Process the chat request
-    with open('system_prompt.txt', 'r') as f:
+    with open('systemPrompt.txt', 'r') as f:
         system_prompt = f.read()
-    
     print(f"[DEBUG]: Received query: {request.query}")
+    db = initialize_vector_db()
+    retrievedChunks = db.similarity_search(request.query, k=4) # retrievedChunks is a list of langchain Document objects
+    '''
+    This is the list of langchain document objects that is returned by the similarity_search function.
+    Each Document object has two attributes: page_content and metadata.
+    page_content is the actual text of the chunk that was found to be similar to the query.
+    metadata is a dictionary that contains additional information about the chunk, such as the source file and page number.
+    Example:
+        [
+        Document(
+            page_content="This is the first and most relevant text chunk found...",
+            metadata={'source': 'uploaded_document.pdf', 'page': 2}
+        ),
+        Document(
+            page_content="This is the second most similar chunk of text...",
+            metadata={'source': 'uploaded_document.pdf', 'page': 5}
+        ),
+        Document(
+            page_content="A third chunk that also had a high similarity score...",
+            metadata={'source': 'uploaded_document.pdf', 'page': 2}
+        ),
+        Document(
+            page_content="The fourth and final chunk returned by the search.",
+            metadata={'source': 'uploaded_document.pdf', 'page': 8}
+        )
+        ]
+    '''
+    contextChunks = [doc.page_content for doc in retrievedChunks]
+    contextString = '\n'.join(contextChunks)
+    print(f"[DEBUG]: Retrieved chunks: {contextString}")
+    system_prompt += '\n' + contextString
+    try:
+        llmResponse = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.query}
+            ],
+            max_tokens=8192,
+            temperature=0.5,
+            top_p=0.5,
+            stream=False,
+            stop=None
+        )
 
-    return {"answer": "Chat response"}
+        print(f"[DEBUG] Groq response: {llmResponse}")
+        '''
+        Sample response from Groq LLM:
+            {
+            "id": "chatcmpl-123abc",
+            "object": "chat.completion",
+            "created": 1699999999,
+            "model": "llama-3.3-70b-versatile",
+            "choices": [
+                {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Here’s an example response: Groq is a high-performance inference engine built for LLMs. It lets you run large models with lower latency and higher throughput."
+                },
+                "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "queue_time": 0.0123,
+                "prompt_tokens": 15,
+                "completion_tokens": 25,
+                "total_tokens": 40,
+                "prompt_time": 0.0005,
+                "completion_time": 0.0012,
+                "total_time": 0.0017
+            },
+            "system_fingerprint": "fp_abcdef123"
+            }
+
+        '''
+
+        response_from_llm = llmResponse.choices[0].message.content
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+        return {"error": "Failed to get response from LLM"}
+    return {"answer": response_from_llm}
 
     
