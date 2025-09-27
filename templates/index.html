@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('Upload failed');
             
             const result = await response.json();
-            showChatView(result.filename);
+            showChatView(result.processedFile);
 
         } catch (error) {
             alert('An error occurred. Please try again.');
