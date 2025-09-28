@@ -9,26 +9,33 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         .drag-over { border-color: #3b82f6; background-color: #eff6ff; }
+        .typing-dot {
+            animation: typing-blink 1.5s infinite;
+            border-radius: 50%;
+            width: 6px;
+            height: 6px;
+            margin: 0 1px;
+            background-color: #9ca3af;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing-blink { 50% { opacity: 0.2; } }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
 
     <div class="container mx-auto p-4 max-w-3xl">
-
-        <!-- Upload View -->
         <div id="uploadView" class="bg-white rounded-2xl shadow-xl p-8 md:p-12">
             <header class="text-center mb-8">
                 <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Chat With Your Document</h1>
                 <p class="text-gray-500 mt-3">Upload a PDF, DOCX, or TXT file to get started.</p>
             </header>
-
             <form id="uploadForm">
                 <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-colors duration-300 hover:border-blue-500 hover:bg-gray-50">
                     <input type="file" id="fileInput" name="file" class="hidden" accept=".pdf,.docx,.txt">
                     <div class="flex flex-col items-center">
                         <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                         <p class="mt-4 text-gray-600"><span class="font-semibold text-blue-600">Click to upload</span> or drag and drop</p>
-                        
                         <div id="fileInfo" class="mt-2 text-sm">
                             <span id="fileName" class="text-gray-500 font-medium"></span>
                             <button type="button" id="removeFileBtn" class="ml-2 text-red-500 font-semibold hover:underline hidden">[Remove]</button>
@@ -36,34 +43,18 @@
                     </div>
                 </div>
                 <div class="mt-6 text-center">
-                    <button id="submitBtn" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                        Start Chatting
-                    </button>
+                    <button id="submitBtn" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>Start Chatting</button>
                     <p id="loadingMessage" class="mt-4 text-sm text-gray-600 hidden">Uploading and processing your document...</p>
                 </div>
             </form>
         </div>
 
-        <!-- Chat View -->
         <div id="chatView" class="hidden h-[90vh] flex flex-col bg-gray-50 rounded-2xl shadow-xl overflow-hidden">
             <header class="bg-white p-4 border-b flex flex-col md:flex-row md:items-center md:justify-between">
-                <h1 class="text-lg md:text-xl font-semibold text-gray-800">Chatting with: 
-                    <span id="chatFilename" class="font-bold text-blue-600"></span>
-                </h1>
+                <h1 class="text-lg md:text-xl font-semibold text-gray-800">Chatting with: <span id="chatFilename" class="font-bold text-blue-600"></span></h1>
                 <button id="startOverBtn" class="text-sm text-blue-500 hover:underline mt-2 md:mt-0">&larr; Upload another file</button>
             </header>
-
-            <!-- Chat Messages -->
-            <main id="chatbox" class="flex-grow p-6 overflow-y-auto space-y-8">
-                <div class="flex items-start gap-3 max-w-[75%]">
-                    <div class="bg-blue-500 text-white p-2 rounded-full h-8 w-8 flex-shrink-0 flex items-center justify-center text-sm font-bold">AI</div>
-                    <div class="bg-gray-100 text-gray-800 p-4 rounded-2xl shadow">
-                        <p class="leading-relaxed">Hello! I've finished reading your document. What would you like to know?</p>
-                    </div>
-                </div>
-            </main>
-
-            <!-- Input -->
+            <main id="chatbox" class="flex-grow p-6 overflow-y-auto space-y-8"></main>
             <footer class="bg-white p-4 border-t">
                 <form id="chatForm" class="flex items-center gap-4">
                     <input type="text" id="userInput" class="w-full px-4 py-3 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ask a question..." autocomplete="off">
@@ -71,19 +62,13 @@
                 </form>
             </footer>
         </div>
-
     </div>
     
-</body>
-</html>
-
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // --- View Elements ---
+    // --- Elements ---
     const uploadView = document.getElementById('uploadView');
     const chatView = document.getElementById('chatView');
-
-    // --- Upload Elements ---
     const uploadForm = document.getElementById('uploadForm');
     const fileInput = document.getElementById('fileInput');
     const dropZone = document.getElementById('dropZone');
@@ -91,17 +76,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBtn = document.getElementById('submitBtn');
     const loadingMessage = document.getElementById('loadingMessage');
     const removeFileBtn = document.getElementById('removeFileBtn');
-
-    // --- Chat Elements ---
     const chatFilename = document.getElementById('chatFilename');
     const startOverBtn = document.getElementById('startOverBtn');
     const chatForm = document.getElementById('chatForm');
     const userInput = document.getElementById('userInput');
     const chatbox = document.getElementById('chatbox');
-
+    const chatSubmitBtn = chatForm.querySelector('button');
     let currentFile = null;
 
-    // --- Functions for Switching Views ---
     function showChatView(filename) {
         chatFilename.textContent = filename;
         chatView.dataset.filename = filename;
@@ -113,9 +95,9 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadView.classList.remove('hidden');
         chatView.classList.add('hidden');
         resetUploadForm();
+        chatbox.innerHTML = `<div class="flex items-start gap-3 max-w-[75%]"><div class="bg-blue-500 text-white p-2 rounded-full h-8 w-8 flex-shrink-0 flex items-center justify-center text-sm font-bold">AI</div><div class="bg-gray-100 text-gray-800 p-4 rounded-2xl shadow"><p class="leading-relaxed">Hello! I've finished reading your document. What would you like to know?</p></div></div>`;
     }
 
-    // --- Event Listeners for Upload ---
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
@@ -128,15 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    fileInput.addEventListener('change', () => {
-        if (fileInput.files.length) {
-            handleFileSelect(fileInput.files[0]);
-        }
-    });
-
-    removeFileBtn.addEventListener('click', () => {
-        resetUploadForm();
-    });
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) { handleFileSelect(fileInput.files[0]); } });
+    removeFileBtn.addEventListener('click', () => { resetUploadForm(); });
 
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -144,19 +119,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         submitBtn.disabled = true;
         loadingMessage.classList.remove('hidden');
-
         const formData = new FormData();
         formData.append('file', currentFile);
 
         try {
             const response = await fetch('/uploadAndStoreResume', { method: 'POST', body: formData });
             if (!response.ok) throw new Error('Upload failed');
-            
             const result = await response.json();
-            showChatView(result.processedFile);
-
+            showChatView(result.filename);
         } catch (error) {
-            alert('An error occurred. Please try again.');
+            alert('An error occurred during upload. Please try again.');
+        } finally {
+            submitBtn.disabled = false;
+            loadingMessage.classList.add('hidden');
         }
     });
 
@@ -174,63 +149,82 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.disabled = true;
         removeFileBtn.classList.add('hidden');
     }
+    
+    // --- FIX: "Start Over" button now calls the reset endpoint ---
+    startOverBtn.addEventListener('click', async () => {
+        startOverBtn.disabled = true; // Prevent multiple clicks
+        try {
+            const response = await fetch('/resetDocument', { method: 'POST' });
+            if (!response.ok) {
+                console.error('Failed to reset session on the server.');
+                alert('Could not clear the previous session. Please refresh the page.');
+            }
+            const result = await response.json();
+            console.log('Reset successful:', result.message);
+        } catch (error) {
+            console.error('Error calling reset endpoint:', error);
+            alert('An error occurred while trying to start over.');
+        } finally {
+            showUploadView(); // Always return to the upload view
+            startOverBtn.disabled = false;
+        }
+    });
 
-    // --- Event Listener for Chat View ---
-    startOverBtn.addEventListener('click', showUploadView);
-
-    // --- Event Listener for Chat Form ---
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const message = userInput.value.trim();
-        if (!message) return;
+        if (!message || !filename) return;
 
         addMessageToChat('You', message);
         userInput.value = '';
+        const thinkingIndicator = addMessageToChat('AI', '<div class="flex space-x-1"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>', true);
+        userInput.disabled = true;
+        chatSubmitBtn.disabled = true;
 
         try {
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: message })
+                body: JSON.stringify({ query: message})
             });
-
             if (!response.ok) throw new Error('Chat request failed');
             const data = await response.json();
+            thinkingIndicator.remove(); 
             addMessageToChat('AI', data.answer);
-
         } catch (error) {
+            thinkingIndicator.remove();
             addMessageToChat('AI', '⚠️ Error: could not get a response.');
+        } finally {
+            userInput.disabled = false;
+            chatSubmitBtn.disabled = false;
+            userInput.focus();
         }
     });
 
-    // --- Function to Add Messages ---
-    function addMessageToChat(sender, text) {
+    function addMessageToChat(sender, text, isHtml = false) {
         const messageWrapper = document.createElement('div');
         messageWrapper.classList.add('flex', 'items-start', 'gap-3', 'w-full');
-
+        const messageContent = document.createElement('div');
+        if (isHtml) { messageContent.innerHTML = text; } 
+        else {
+            const textNode = document.createElement('p');
+            textNode.classList.add('leading-relaxed');
+            textNode.textContent = text;
+            messageContent.appendChild(textNode);
+        }
         if (sender === 'You') {
             messageWrapper.classList.add('justify-end');
-            messageWrapper.innerHTML = `
-                <div class="flex items-start gap-3 max-w-[75%] justify-end">
-                    <div class="bg-blue-600 text-white p-4 rounded-2xl shadow">
-                        <p class="leading-relaxed">${text}</p>
-                    </div>
-                </div>
-            `;
+            messageWrapper.innerHTML = `<div class="flex items-start gap-3 max-w-[75%] justify-end"><div class="bg-blue-600 text-white p-4 rounded-2xl shadow"></div></div>`;
+            messageWrapper.querySelector('.shadow').appendChild(messageContent);
         } else {
-            messageWrapper.innerHTML = `
-                <div class="flex items-start gap-3 max-w-[75%]">
-                    <div class="bg-blue-500 text-white p-2 rounded-full h-8 w-8 flex-shrink-0 flex items-center justify-center text-sm font-bold">AI</div>
-                    <div class="bg-gray-100 text-gray-800 p-4 rounded-2xl shadow">
-                        <p class="leading-relaxed">${text}</p>
-                    </div>
-                </div>
-            `;
+            messageWrapper.innerHTML = `<div class="flex items-start gap-3 max-w-[75%]"><div class="bg-blue-500 text-white p-2 rounded-full h-8 w-8 flex-shrink-0 flex items-center justify-center text-sm font-bold">AI</div><div class="bg-gray-100 text-gray-800 p-4 rounded-2xl shadow"></div></div>`;
+            messageWrapper.querySelector('.shadow').appendChild(messageContent);
         }
-
         chatbox.appendChild(messageWrapper);
         chatbox.scrollTop = chatbox.scrollHeight;
+        return messageWrapper;
     }
+    showUploadView();
 });
 </script>
 </body>

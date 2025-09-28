@@ -8,6 +8,8 @@ from PyPDF2 import PdfReader
 from docx import Document
 from groq import Groq
 from dotenv import load_dotenv
+# from chromadb import Client
+# from chromadb.config import Settings
 
 # Import for document chunking and embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -49,6 +51,11 @@ os.makedirs(uploadDirectory, exist_ok=True)
 
 chromdb_directory = "vector_db"
 os.makedirs(chromdb_directory, exist_ok=True)
+
+collection_name = "documents"
+
+# Initialize ChromaDB client for managing collections and other operations
+# chromaClient = Client(Settings(persist_directory=chromdb_directory))
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -109,7 +116,8 @@ def initialize_vector_db():
         
         db = Chroma(
             embedding_function=embeddingModel, 
-            persist_directory=chromdb_directory
+            persist_directory=chromdb_directory,
+            collection_name=collection_name # This is optional, if not provided, a random name will be generated mainly = 'langchain'
         )
         print("[DEBUG]: ChromaDB initialized")
         return db
@@ -182,8 +190,8 @@ async def uploadAndStoreResume(file: UploadFile = File(...)):
         # Add the chunks to the ChromaDB collection
         db = initialize_vector_db()
         db.add_texts(chunks, ids=ids)
-        # db.persist() - Save the changes to the persistent directory
         print("[DEBUG]: Chunks added to ChromaDB")
+        print(f"[DEBUG]: Collections in ChromaDB: {db._client.list_collections()}")
     except Exception as e:
         print(f"[ERROR]: {e}")
         return {"error": "Failed to split text"}
@@ -280,3 +288,27 @@ async def chat(request: RequestFromClient):
     return {"answer": response_from_llm}
 
     
+@app.post("/resetDocument")
+async def resetDocument():
+    """
+    This endpoint deletes all uploaded files and resets the ChromaDB vector store.
+    """
+    try:
+        # Delete all files in the upload directory
+        for file_name in os.listdir(uploadDirectory):
+            file_path = os.path.join(uploadDirectory, file_name)
+            os.remove(file_path)
+        print("[DEBUG]: Uploaded files deleted")
+
+        # Delete all files in the ChromaDB directory
+        db = initialize_vector_db()
+        db._client.delete_collection(name = collection_name)  # This will delete the entire collection and all its data
+        db._client.create_collection(name = collection_name)  # Recreate the collection after deletion
+        print("[DEBUG]: ChromaDB reset")
+        print(f"[DEBUG]: Collections in ChromaDB after reset: {db._client.list_collections()}")
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+        return {"error": "Failed to reset chromaDB or delete files"}
+        
+
+    return {"status": "ChromaDB reset successfully"}
