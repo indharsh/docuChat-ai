@@ -134,14 +134,17 @@ def read_root():
     return templates.TemplateResponse("index.html", {"request": {}})
 
 
-@app.post("/uploadAndStoreResume")
-async def uploadAndStoreResume(file: UploadFile = File(...)):
+@app.post("/uploadAndStoreDocument")
+async def uploadAndStoreDocument(file: UploadFile = File(...)):
     """
     This endpoint allows users to upload a file.
     The uploaded file is saved in the 'uploaded_files' directory.
     'file: UploadFile' This is a standard Python type hint. It declares a parameter named file and tells FastAPI that it expects the data for this parameter to be an UploadFile object. An UploadFile is a special FastAPI object that contains not just the file's contents, but also its metadata like the filename and content type
     'File(...)' This is a special function provided by FastAPI that indicates that the file parameter should be interpreted as a file upload. The ellipsis (...) means that this parameter is required; the client must provide a file when making a request to this endpoint.
     """
+    # First, reset any existing documents and their embeddings
+    await resetDocument() # Return value is ignored
+    # Save the uploaded file to the upload directory
     file_path = os.path.join(uploadDirectory, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer) # This saves the uploaded file to the specified path byte by byte.
