@@ -10,11 +10,27 @@ from groq import Groq
 from dotenv import load_dotenv
 # from chromadb import Client
 # from chromadb.config import Settings
+import mysql.connector
 
 # Import for document chunking and embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+
+# Database connection setup
+try:
+    connection = mysql.connector.connect(
+        host="34.9.181.99",
+        user="indharsh",
+        password="Sairam007#",
+        database="user_detail"
+    )
+    print("[DEBUG]: MySQL Database connection successful")
+except mysql.connector.Error as err:
+    print(f"[ERROR]: MySQL Database connection error: {err}")
+    connection = None
+
+cursor = connection.cursor()
 
 
 # Create an instance of the FastAPI class
@@ -131,8 +147,48 @@ def read_root():
     """
     This is the root endpoint. It's a good way to check if the server is running.
     """
-    return templates.TemplateResponse("index.html", {"request": {}})
+    return templates.TemplateResponse("auth.html", {"request": {}})
 
+@app.post("/register")
+async def register_user(userDetails: dict):
+    """
+    This endpoint handles user registration.
+    """
+    saveQuery = "INSERT INTO users (full_name, email, password) VALUES (%s, %s, %s)"
+    saveValues = (userDetails['fullName'], userDetails['email'], userDetails['password'])
+    query = "SELECT * FROM users WHERE email = %s"
+    value = (userDetails['email'])
+    try:
+        cursor.execute(query, (value,))
+        existingUser = cursor.fetchone()
+        if existingUser:
+            return {"error": "User already exists"}
+        cursor.execute(saveQuery, saveValues)
+        connection.commit()
+        print("[DEBUG]: User registered successfully")
+    except mysql.connector.Error as err:
+        print(f"[ERROR]: {err}")
+        return {"error": "Failed to register user"}
+    return {"message": "User registered successfully"}
+
+@app.post("/login")
+async def login_user(loginDetails: dict):
+    """
+    This endpoint handles user login.
+    """
+    query = "SELECT * FROM users WHERE email = %s AND password = %s"
+    values = (loginDetails['email'], loginDetails['password'])
+    try:
+        cursor.execute(query, values)
+        user = cursor.fetchone()
+        if user:
+            print("[DEBUG]: User logged in successfully")
+            return {"message": "Login successful"}
+        else:
+            return {"error": "Invalid email or password"}
+    except mysql.connector.Error as err:
+        print(f"[ERROR]: {err}")
+        return {"error": "Failed to login"}
 
 @app.post("/uploadAndStoreDocument")
 async def uploadAndStoreDocument(file: UploadFile = File(...)):
