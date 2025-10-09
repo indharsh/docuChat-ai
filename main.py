@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import os
@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 # from chromadb import Client
 # from chromadb.config import Settings
 import mysql.connector
+import bcrypt
+import pandas as pd
 
 # Import for document chunking and embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -154,12 +156,19 @@ async def register_user(userDetails: dict):
     """
     This endpoint handles user registration.
     """
-    saveQuery = "INSERT INTO users (full_name, email, password) VALUES (%s, %s, %s)"
-    saveValues = (userDetails['fullName'], userDetails['email'], userDetails['password'])
-    query = "SELECT * FROM users WHERE email = %s"
+    saveQuery = "INSERT INTO users (full_name, email_id, password_hash) VALUES (%s, %s, %s)"
+    password_from_user = userDetails['password']
+    # Encode the passwords to bytes
+    password_bytes = password_from_user.encode('utf-8')
+    # Generate a salt
+    salt = bcrypt.gensalt()
+    # Hash the password with the salt
+    hashPassword = bcrypt.hashpw(password_bytes, salt)
+    saveValues = (userDetails['fullName'], userDetails['email'], hashPassword)
+    query = "SELECT * FROM users WHERE email_id = %s"
     value = (userDetails['email'])
     try:
-        cursor.execute(query, (value,))
+        cursor.execute(query, value)
         existingUser = cursor.fetchone()
         if existingUser:
             return {"error": "User already exists"}
@@ -176,19 +185,30 @@ async def login_user(loginDetails: dict):
     """
     This endpoint handles user login.
     """
-    query = "SELECT * FROM users WHERE email = %s AND password = %s"
-    values = (loginDetails['email'], loginDetails['password'])
+    password_from_user = loginDetails['password']
+    # Encode the password to bytes
+    password_from_user_bytes = password_from_user.encode('utf-8')
+
+    query = "SELECT * FROM users WHERE email = %s"
+    values = (loginDetails['email'])
     try:
         cursor.execute(query, values)
         user = cursor.fetchone()
         if user:
-            print("[DEBUG]: User logged in successfully")
-            return {"message": "Login successful"}
+            print("[DEBUG]: User found")
+            user = pd.DataFrame(user, columns=['id', 'full_name', 'email_id', 'password_hash'])
+            stored_password_hash = user['password_hash']
+            stored_password_hash_bytes = stored_password_hash.encode('utf-8')
+            if bcrypt.checkpw(password_from_user_bytes, stored_password_hash_bytes):
+                print("[DEBUG]: Password match")
+                return {"message": "Login successful"}
+            else:
+                return Response(content={"error": "Incorrect password"}, status_code=401)
         else:
-            return {"error": "Invalid email or password"}
+            return Response(content={"error": "User not found"}, status_code=401)
     except mysql.connector.Error as err:
         print(f"[ERROR]: {err}")
-        return {"error": "Failed to login"}
+        return Response(content={"error": "Failed to login"}, status_code=500)
 
 @app.post("/uploadAndStoreDocument")
 async def uploadAndStoreDocument(file: UploadFile = File(...)):
