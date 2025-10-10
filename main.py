@@ -1,6 +1,7 @@
 # main.py
 from fastapi import FastAPI, File, UploadFile, Response
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 import shutil
@@ -42,6 +43,7 @@ app = FastAPI(
 )
 
 templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 
