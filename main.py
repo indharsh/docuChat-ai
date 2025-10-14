@@ -1,5 +1,7 @@
 # main.py
-from fastapi import FastAPI, File, UploadFile, Response
+from fastapi import FastAPI, File, UploadFile, Response, Request
+from fastapi.responses import JSONResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -147,11 +149,18 @@ def initialize_vector_db():
 
 # Define a "route" for the root URL
 @app.get("/")
-def read_root():
+def read_root(request: Request):
     """
     This is the root endpoint. It's a good way to check if the server is running.
     """
-    return templates.TemplateResponse("auth.html", {"request": {}})
+    return templates.TemplateResponse("auth.html", {"request": request})
+
+@app.get("/index")
+def get_index(request: Request):
+    """
+    This endpoint serves the main chat interface.
+    """
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/register")
 async def register_user(userDetails: dict):
@@ -168,7 +177,7 @@ async def register_user(userDetails: dict):
     hashPassword = bcrypt.hashpw(password_bytes, salt)
     saveValues = (userDetails['fullName'], userDetails['email'], hashPassword)
     query = "SELECT * FROM users WHERE email_id = %s"
-    value = (userDetails['email'])
+    value = (userDetails['email'],)
     try:
         cursor.execute(query, value)
         existingUser = cursor.fetchone()
@@ -191,26 +200,28 @@ async def login_user(loginDetails: dict):
     # Encode the password to bytes
     password_from_user_bytes = password_from_user.encode('utf-8')
 
-    query = "SELECT * FROM users WHERE email = %s"
-    values = (loginDetails['email'])
+    query = "SELECT * FROM users WHERE email_id = %s"
+    values = (loginDetails['email'],)
     try:
         cursor.execute(query, values)
-        user = cursor.fetchone()
-        if user:
+        user_row = cursor.fetchone()
+        if user_row:
             print("[DEBUG]: User found")
-            user = pd.DataFrame(user, columns=['id', 'full_name', 'email_id', 'password_hash'])
-            stored_password_hash = user['password_hash']
+            # Create DataFrame properly by converting tuple to a list of lists
+            user_df = pd.DataFrame([user_row], columns=['id', 'full_name', 'email_id', 'password_hash', 'created_time'])
+            stored_password_hash = user_df['password_hash'].iloc[0]
+            # Encode the stored hash to bytes
             stored_password_hash_bytes = stored_password_hash.encode('utf-8')
             if bcrypt.checkpw(password_from_user_bytes, stored_password_hash_bytes):
                 print("[DEBUG]: Password match")
-                return {"message": "Login successful"}
+                return RedirectResponse(url="/index", status_code=303)
             else:
-                return Response(content={"error": "Incorrect password"}, status_code=401)
+                return JSONResponse(content={"error": "Incorrect password"}, status_code=401)
         else:
-            return Response(content={"error": "User not found"}, status_code=401)
+            return JSONResponse(content={"error": "User not found"}, status_code=401)
     except mysql.connector.Error as err:
         print(f"[ERROR]: {err}")
-        return Response(content={"error": "Failed to login"}, status_code=500)
+        return JSONResponse(content={"error": "Failed to login"}, status_code=500)
 
 @app.post("/uploadAndStoreDocument")
 async def uploadAndStoreDocument(file: UploadFile = File(...)):
