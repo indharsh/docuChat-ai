@@ -23,19 +23,20 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # Database connection setup
-try:
-    connection = mysql.connector.connect(
-        host="34.9.181.99",
-        user="indharsh",
-        password="Sairam007#",
-        database="user_detail"
-    )
-    print("[DEBUG]: MySQL Database connection successful")
-except mysql.connector.Error as err:
-    print(f"[ERROR]: MySQL Database connection error: {err}")
-    connection = None
-
-cursor = connection.cursor()
+def setMySQLConnection():
+    try:
+        connection = mysql.connector.connect(
+            host="34.9.181.99",
+            user="indharsh",
+            password="Sairam007#",
+            database="user_detail"
+        )
+        print("[DEBUG]: MySQL Database connection successful")
+    except mysql.connector.Error as err:
+        print(f"[ERROR]: MySQL Database connection error: {err}")
+        connection = None
+    cursor = connection.cursor()
+    return connection, cursor
 
 
 # Create an instance of the FastAPI class
@@ -46,7 +47,6 @@ app = FastAPI(
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 
 class RequestFromClient(BaseModel):
@@ -178,6 +178,7 @@ async def register_user(userDetails: dict):
     saveValues = (userDetails['fullName'], userDetails['email'], hashPassword)
     query = "SELECT * FROM users WHERE email_id = %s"
     value = (userDetails['email'],)
+    connection, cursor = setMySQLConnection()
     try:
         cursor.execute(query, value)
         existingUser = cursor.fetchone()
@@ -189,6 +190,14 @@ async def register_user(userDetails: dict):
     except mysql.connector.Error as err:
         print(f"[ERROR]: {err}")
         return {"error": "Failed to register user"}
+    finally:
+        # --- This block ALWAYS runs, ensuring cleanup ---
+        print("[DEBUG]: Closing MySQL connection and cursor for register request.")
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
     return {"message": "User registered successfully"}
 
 @app.post("/login")
@@ -202,6 +211,7 @@ async def login_user(loginDetails: dict):
 
     query = "SELECT * FROM users WHERE email_id = %s"
     values = (loginDetails['email'],)
+    connection, cursor = setMySQLConnection()
     try:
         cursor.execute(query, values)
         user_row = cursor.fetchone()
@@ -222,6 +232,13 @@ async def login_user(loginDetails: dict):
     except mysql.connector.Error as err:
         print(f"[ERROR]: {err}")
         return JSONResponse(content={"error": "Failed to login"}, status_code=500)
+    finally:
+        # --- This block ALWAYS runs, ensuring cleanup ---
+        print("[DEBUG]: Closing MySQL connection and cursor for login request.")
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
 
 @app.post("/uploadAndStoreDocument")
 async def uploadAndStoreDocument(file: UploadFile = File(...)):
