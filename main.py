@@ -26,10 +26,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 def setMySQLConnection():
     try:
         connection = mysql.connector.connect(
-            host="34.9.181.99",
-            user="indharsh",
-            password="Sairam007#",
-            database="user_detail"
+            host=os.getenv("host_name"),
+            user=os.getenv("user_name"),
+            password=os.getenv("password_name"),
+            database=os.getenv("database_name")
         )
         print("[DEBUG]: MySQL Database connection successful")
     except mysql.connector.Error as err:

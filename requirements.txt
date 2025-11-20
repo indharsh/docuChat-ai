@@ -1,6 +1,6 @@
 # Essential packages for docuChat application
 # ML/AI packages
-chromadb==0.4.24
+chromadb==1.1.1
 langchain==0.3.27
 langchain-community==0.3.29
 langchain-core==0.3.76
