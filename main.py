@@ -1,6 +1,9 @@
 # main.py
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Response, Request
+from fastapi.responses import JSONResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 import shutil
@@ -10,11 +13,30 @@ from groq import Groq
 from dotenv import load_dotenv
 # from chromadb import Client
 # from chromadb.config import Settings
+import mysql.connector
+import bcrypt
+import pandas as pd
 
 # Import for document chunking and embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+
+# Database connection setup
+def setMySQLConnection():
+    try:
+        connection = mysql.connector.connect(
+            host=os.getenv("host_name"),
+            user=os.getenv("user_name"),
+            password=os.getenv("password_name"),
+            database=os.getenv("database_name")
+        )
+        print("[DEBUG]: MySQL Database connection successful")
+    except mysql.connector.Error as err:
+        print(f"[ERROR]: MySQL Database connection error: {err}")
+        connection = None
+    cursor = connection.cursor()
+    return connection, cursor
 
 
 # Create an instance of the FastAPI class
@@ -24,7 +46,7 @@ app = FastAPI(
 )
 
 templates = Jinja2Templates(directory="templates")
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 class RequestFromClient(BaseModel):
@@ -127,12 +149,96 @@ def initialize_vector_db():
 
 # Define a "route" for the root URL
 @app.get("/")
-def read_root():
+def read_root(request: Request):
     """
     This is the root endpoint. It's a good way to check if the server is running.
     """
-    return templates.TemplateResponse("index.html", {"request": {}})
+    return templates.TemplateResponse("auth.html", {"request": request})
 
+@app.get("/index")
+def get_index(request: Request):
+    """
+    This endpoint serves the main chat interface.
+    """
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.post("/register")
+async def register_user(userDetails: dict):
+    """
+    This endpoint handles user registration.
+    """
+    saveQuery = "INSERT INTO users (full_name, email_id, password_hash) VALUES (%s, %s, %s)"
+    password_from_user = userDetails['password']
+    # Encode the passwords to bytes
+    password_bytes = password_from_user.encode('utf-8')
+    # Generate a salt
+    salt = bcrypt.gensalt()
+    # Hash the password with the salt
+    hashPassword = bcrypt.hashpw(password_bytes, salt)
+    saveValues = (userDetails['fullName'], userDetails['email'], hashPassword)
+    query = "SELECT * FROM users WHERE email_id = %s"
+    value = (userDetails['email'],)
+    connection, cursor = setMySQLConnection()
+    try:
+        cursor.execute(query, value)
+        existingUser = cursor.fetchone()
+        if existingUser:
+            return {"error": "User already exists"}
+        cursor.execute(saveQuery, saveValues)
+        connection.commit()
+        print("[DEBUG]: User registered successfully")
+    except mysql.connector.Error as err:
+        print(f"[ERROR]: {err}")
+        return {"error": "Failed to register user"}
+    finally:
+        # --- This block ALWAYS runs, ensuring cleanup ---
+        print("[DEBUG]: Closing MySQL connection and cursor for register request.")
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+    return {"message": "User registered successfully"}
+
+@app.post("/login")
+async def login_user(loginDetails: dict):
+    """
+    This endpoint handles user login.
+    """
+    password_from_user = loginDetails['password']
+    # Encode the password to bytes
+    password_from_user_bytes = password_from_user.encode('utf-8')
+
+    query = "SELECT * FROM users WHERE email_id = %s"
+    values = (loginDetails['email'],)
+    connection, cursor = setMySQLConnection()
+    try:
+        cursor.execute(query, values)
+        user_row = cursor.fetchone()
+        if user_row:
+            print("[DEBUG]: User found")
+            # Create DataFrame properly by converting tuple to a list of lists
+            user_df = pd.DataFrame([user_row], columns=['id', 'full_name', 'email_id', 'password_hash', 'created_time'])
+            stored_password_hash = user_df['password_hash'].iloc[0]
+            # Encode the stored hash to bytes
+            stored_password_hash_bytes = stored_password_hash.encode('utf-8')
+            if bcrypt.checkpw(password_from_user_bytes, stored_password_hash_bytes):
+                print("[DEBUG]: Password match")
+                return RedirectResponse(url="/index", status_code=303)
+            else:
+                return JSONResponse(content={"error": "Incorrect password"}, status_code=401)
+        else:
+            return JSONResponse(content={"error": "User not found"}, status_code=401)
+    except mysql.connector.Error as err:
+        print(f"[ERROR]: {err}")
+        return JSONResponse(content={"error": "Failed to login"}, status_code=500)
+    finally:
+        # --- This block ALWAYS runs, ensuring cleanup ---
+        print("[DEBUG]: Closing MySQL connection and cursor for login request.")
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
 
 @app.post("/uploadAndStoreDocument")
 async def uploadAndStoreDocument(file: UploadFile = File(...)):
